@@ -1,0 +1,1 @@
+docker buildx build --no-cache --push --platform linux/arm/v6,linux/arm/v7,linux/arm64/v8,linux/amd64 . -t hougaard/go-compiler:latest
