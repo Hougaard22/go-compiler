@@ -2,11 +2,24 @@ FROM debian:bookworm-slim
 ARG TARGETPLATFORM
 RUN echo "I'm building for $TARGETPLATFORM"
 
-RUN apt remove -y perl && \
-	apt remove -y gnupg2
-RUN apt autoremove -y
-
 RUN apt update && \
-    apt install -y git && \
-    apt install -y golang-go
-RUN apt autoremove -y
+    apt install -y git curl dmsetup wget gnupg && \
+    apt autoremove -y
+
+#RUN apt-get install -y golang-go
+ENV PATH=/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ENV GOLANG_VERSION=1.21.4
+RUN /bin/sh -c set -eux; arch="$(dpkg --print-architecture)"; arch="${arch##*-}"; url=; case "$arch" in 'amd64') url='https://dl.google.com/go/go1.21.4.linux-amd64.tar.gz'; sha256='73cac0215254d0c7d1241fa40837851f3b9a8a742d0b54714cbdfb3feaf8f0af'; ;; 'armel') export GOARCH='arm' GOARM='5' GOOS='linux'; ;; 'armhf') url='https://dl.google.com/go/go1.21.4.linux-armv6l.tar.gz'; sha256='6c62e89113750cc77c498194d13a03fadfda22bd2c7d44e8a826fd354db60252'; ;; 'arm64') url='https://dl.google.com/go/go1.21.4.linux-arm64.tar.gz'; sha256='ce1983a7289856c3a918e1fd26d41e072cc39f928adfb11ba1896440849b95da'; ;; 'i386') url='https://dl.google.com/go/go1.21.4.linux-386.tar.gz'; sha256='64d3e5d295806e137c9e39d1e1f10b00a30fcd5c2f230d72b3298f579bb3c89a'; ;; 'mips64el') url='https://dl.google.com/go/go1.21.4.linux-mips64le.tar.gz'; sha256='c7ce3a9dcf03322b79beda474c4a0154393d9029b48f7c2e260fb3365c8a6ad3'; ;; 'ppc64el') url='https://dl.google.com/go/go1.21.4.linux-ppc64le.tar.gz'; sha256='2c63b36d2adcfb22013102a2ee730f058ec2f93b9f27479793c80b2e3641783f'; ;; 'riscv64') url='https://dl.google.com/go/go1.21.4.linux-riscv64.tar.gz'; sha256='9695edd2109544b364daddb32816f5c7980f1f48b8490c51fa2c167f5b2eca48'; ;; 's390x') url='https://dl.google.com/go/go1.21.4.linux-s390x.tar.gz'; sha256='7a75ba4afc7a96058ca65903d994cd862381825d7dca12b2183f087c757c26c0'; ;; *) echo >&2 "error: unsupported architecture '$arch' (likely packaging update needed)"; exit 1 ;; esac; build=; if [ -z "$url" ]; then build=1; url='https://dl.google.com/go/go1.21.4.src.tar.gz'; sha256='47b26a83d2b65a3c1c1bcace273b69bee49a7a7b5168a7604ded3d26a37bd787'; echo >&2; echo >&2 "warning: current architecture ($arch) does not have a compatible Go binary release; will be building from source"; echo >&2; fi; wget -O go.tgz.asc "$url.asc"; wget -O go.tgz "$url" --progress=dot:giga; echo "$sha256 *go.tgz" | sha256sum -c -; GNUPGHOME="$(mktemp -d)"; export GNUPGHOME; gpg --batch --keyserver keyserver.ubuntu.com --recv-keys 'EB4C 1BFD 4F04 2F6D DDCC EC91 7721 F63B D38B 4796'; gpg --batch --keyserver keyserver.ubuntu.com --recv-keys '2F52 8D36 D67B 69ED F998 D857 78BD 6547 3CB3 BD13'; gpg --batch --verify go.tgz.asc go.tgz; gpgconf --kill all; rm -rf "$GNUPGHOME" go.tgz.asc; tar -C /usr/local -xzf go.tgz; rm go.tgz; if [ -n "$build" ]; then savedAptMark="$(apt-mark showmanual)"; apt-get update; apt-get install -y --no-install-recommends golang-go; export GOCACHE='/tmp/gocache'; ( cd /usr/local/go/src; export GOROOT_BOOTSTRAP="$(go env GOROOT)" GOHOSTOS="$GOOS" GOHOSTARCH="$GOARCH"; ./make.bash; ); apt-mark auto '.*' > /dev/null; apt-mark manual $savedAptMark > /dev/null; apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false; rm -rf /var/lib/apt/lists/*; rm -rf /usr/local/go/pkg/*/cmd /usr/local/go/pkg/bootstrap /usr/local/go/pkg/obj /usr/local/go/pkg/tool/*/api /usr/local/go/pkg/tool/*/go_bootstrap /usr/local/go/src/cmd/dist/dist "$GOCACHE" ; fi; go version
+
+ENV GOTOOLCHAIN=local
+ENV GOPATH=/go
+
+ENV PATH=/go/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+RUN mkdir -p "$GOPATH/src" "$GOPATH/bin" && chmod -R 1777 "$GOPATH"
+
+RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.55.2
+
+RUN echo $(go version)
+RUN echo $(golangci-lint --version)
+
+WORKDIR /go
